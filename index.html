@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="pt">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Enviar Localização</title>
+    <style>
+        :root{ --bg:#f6f8fa; --card:#ffffff; --accent:#0069ff; --accent-2:#065fd4; --muted:#6b7280; }
+        *{box-sizing:border-box}
+        body{font-family:Inter, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial; background:linear-gradient(180deg,#f8fafc,#eef2ff); margin:0; min-height:100vh; display:flex; align-items:center; justify-content:center; padding:24px}
+        .container{background:var(--card); max-width:520px; width:100%; padding:28px; border-radius:12px; box-shadow:0 6px 18px rgba(15,23,42,0.08); text-align:center}
+        h1{margin:0 0 8px; font-size:1.5rem; color:#0f172a}
+        p.lead{margin:0 0 16px; color:var(--muted)}
+        .form-row{display:flex; gap:10px; justify-content:center; align-items:center; margin-top:12px; flex-wrap:wrap}
+        input[type="email"]{padding:10px 12px; border:1px solid #e6e9ef; border-radius:8px; width:100%; max-width:320px; font-size:0.95rem}
+        button{padding:10px 16px; border-radius:8px; border:none; background:linear-gradient(180deg,var(--accent),var(--accent-2)); color:#fff; font-weight:600; cursor:pointer; box-shadow:0 6px 14px rgba(6,95,212,0.12)}
+        button:disabled{opacity:0.6; cursor:not-allowed}
+        #status{margin-top:16px; color:var(--muted); font-size:0.95rem}
+        .small{font-size:0.85rem; color:var(--muted); margin-top:8px}
+        .footer{margin-top:18px; font-size:0.8rem; color:#9ca3af}
+        @media (max-width:420px){ .form-row{flex-direction:column} button{width:100%; max-width:320px} input{width:100%} }
+    </style>
+</head>
+<body>
+    <div class="container" role="main">
+        <h1>Enviar Localização</h1>
+        <p class="lead">Insira o email e pressione o botão para enviar os dados (email e localização).</p>
+        <div class="form-row">
+            <input type="email" id="email" placeholder="seu@exemplo.com" aria-label="Email">
+            <button id="sendBtn" onclick="getLocation()">Enviar Localização</button>
+        </div>
+        <p id="status">Clique no botão para enviar dados.</p>
+        <p class="small">Ao permitir, o navegador irá enviar sua localização — será usada apenas para cálculo de distância.</p>
+    </div>
+
+    <script>
+        // Coordenadas do local alvo (latitude e longitude)
+        const targetLatitude = 42.03188; // Latitude da Loja
+        const targetLongitude = -8.63318; // Longitude da Loja
+        // URL do Webhook do Make (substitua pelo seu webhook)
+        const makeWebhookURL = "https://hook.eu1.make.com/b29hyw61x9h3ejjydmipt5p2jvj3fxhj";
+
+        function getLocation(){
+            const email = document.getElementById('email').value.trim();
+            const statusEl = document.getElementById('status');
+            const btn = document.getElementById('sendBtn');
+            if(!email){ statusEl.textContent = 'Por favor, insira um email válido.'; return; }
+            if(!navigator.geolocation){ statusEl.textContent = 'Geolocalização não suportada pelo navegador.'; return; }
+            btn.disabled = true;
+            statusEl.textContent = 'A obter localização...';
+            navigator.geolocation.getCurrentPosition(
+                (position) => calculateDistanceAndSend(position, email).finally(()=> btn.disabled = false),
+                (err) => { showError(err); btn.disabled = false; }
+            );
+        }
+
+        async function calculateDistanceAndSend(position, email){
+            const userLatitude = position.coords.latitude;
+            const userLongitude = position.coords.longitude;
+            const distance = calculateDistance(userLatitude, userLongitude, targetLatitude, targetLongitude);
+            const statusEl = document.getElementById('status');
+            statusEl.textContent = `Distância calculada: ${distance.toFixed(2)} km. Enviando dados...`;
+            const data = { email, distance: distance.toFixed(2), timestamp: new Date().toLocaleString() };
+            try{
+                const resp = await fetch(makeWebhookURL, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(data)});
+                if(resp.ok){ statusEl.textContent = 'Dados enviados com sucesso! Aguarde o email.'; }
+                else { statusEl.textContent = `Erro ao enviar os dados (status ${resp.status}).`; }
+            } catch(e){ statusEl.textContent = 'Erro na ligação com o Make: ' + e.message; }
+        }
+
+        // Função Haversine para calcular distância em km
+        function calculateDistance(lat1, lon1, lat2, lon2){
+            const R = 6371; // km
+            const φ1 = lat1 * Math.PI / 180;
+            const φ2 = lat2 * Math.PI / 180;
+            const Δφ = (lat2 - lat1) * Math.PI / 180;
+            const Δλ = (lon2 - lon1) * Math.PI / 180;
+            const a = Math.sin(Δφ/2) * Math.sin(Δφ/2) + Math.cos(φ1) * Math.cos(φ2) * Math.sin(Δλ/2) * Math.sin(Δλ/2);
+            const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+            return R * c;
+        }
+
+        function showError(error){
+            const statusEl = document.getElementById('status');
+            switch(error.code){
+                case error.PERMISSION_DENIED:
+                    statusEl.textContent = 'O utilizador negou a solicitação de geolocalização.'; break;
+                case error.POSITION_UNAVAILABLE:
+                    statusEl.textContent = 'Informações de localização não estão disponíveis.'; break;
+                case error.TIMEOUT:
+                    statusEl.textContent = 'A solicitação expirou.'; break;
+                default:
+                    statusEl.textContent = 'Ocorreu um erro desconhecido.'; break;
+            }
+        }
+    </script>
+</body>
+</html>
